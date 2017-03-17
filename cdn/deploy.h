@@ -3,6 +3,7 @@
 
 #include "lib_io.h"
 #include "util.h"
+#include "fibonacci.h"
 #include <stdio.h>
 #include <stdlib.h>
 

@@ -10,6 +10,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include "fibonacci.h"
 
 #define EMPTY 0
 #define FALSE 0
@@ -18,6 +20,7 @@
 #define PATH_END -1
 #define MAX_LINE_LEN 55000
 #define MAX_BIT		5
+#define UNREACH		1000000
 
 struct node;		//节点的结构体
 struct des_node;	//消费节点的结构体
@@ -78,7 +81,7 @@ int data_handle(char * topo[], PNODE **NODElist ,
 		PDES_NODE **DES_NODElist , int *NODE_SIZE ,
 		int *DES_NODE_SIZE , int *SERVER_PRICE);
 
-
+void dijkstra(PNODE * NODElist , int NODE_SIZE , int source);
 
 
 #endif /* CDN_UTIL_H_ */
