@@ -25,6 +25,7 @@ PEDGE initEDGE(int num , int capacity , int unit_price)
 		return NULL;
 	pe->node_num = num;
 	pe->capacity = capacity;
+	pe->remain = capacity;
 	pe->unit_price = unit_price;
 	pe->traffic = EMPTY;
 	pe->nextP = NULL;
@@ -39,10 +40,12 @@ PDES_NODE initDES_NODE(int node_num , int demand)
 	pd->traffic = 0;
 	pd->demand = demand;
 	pd->node_num = node_num;
+	pd->cost = 0;
+	pd->edge = NULL;
 	return pd;
 }
 /*关于PATH的函数*/
-PPATH initPATH()
+PPATH initPATH(int start)
 {
 	PPATH pp = (PPATH)malloc(sizeof(PATH));
 	if(NULL == pp)
@@ -54,21 +57,21 @@ PPATH initPATH()
 		pp->path[i] = PATH_END;
 	pp->traffic = 0;
 	pp->nextp = NULL;
-	pp->cost = 0;
+	pp->path[0] = start;
 	return pp;
 }
 /*初始化通往每个消费点的路径*/
-PPATH * initDESPATH(int DES_NODE_NUM ,int SERVER_PRICE)
+PPATH * initDESPATH(int DES_NODE_NUM ,PDES_NODE *DES_NODElist)
 {
 	PPATH * ppath = (PPATH *)malloc(sizeof(PPATH) * DES_NODE_NUM);
 	if(NULL == ppath)
 		return NULL;
 	for(int i = 0 ; i < DES_NODE_NUM ; i++ )
 	{
-		ppath[i] = initPATH();
+		ppath[i] = initPATH(DES_NODElist[i]->node_num);
+		ppath[i]->traffic = 0;
 		if(NULL == ppath[i])
 			return NULL;
-		ppath[i]->cost = SERVER_PRICE;
 	}
 	return ppath;
 }
@@ -87,11 +90,12 @@ int data_handle(char * topo[], PNODE **NODElist ,
 		nodenum = line[cntcolumn++] - '0' + nodenum*10;
 	/*为网络节点分配动态数组空间*/
 	*NODE_SIZE = nodenum;
-	PNODE *nodelist = (PNODE*)malloc(nodenum*sizeof(PNODE));
+	/*多出两个节点分别是超接源点和超级汇点*/
+	PNODE *nodelist = (PNODE*)malloc((nodenum + 2)*sizeof(PNODE));
 	*NODElist = nodelist;
 	if(NULL == nodelist)
 		return FALSE;
-	for(int i = 0 ; i < nodenum ; i++)
+	for(int i = 0 ; i < nodenum + 2 ; i++)
 		nodelist[i] = initNODE();
 	/*获取边数*/
 	cntcolumn++;
@@ -118,7 +122,7 @@ int data_handle(char * topo[], PNODE **NODElist ,
 	*SERVER_PRICE = server_price;
 	/*		获取网络节点之间的边集		*/
 	cntline = cntline + 2;
-	PEDGE pe = NULL;
+	PNODE pnode = NULL;
 	line = topo[cntline];
 	while(line[0] != '\r' && line[0] != '\n')
 	{
@@ -143,25 +147,30 @@ int data_handle(char * topo[], PNODE **NODElist ,
 		while(line[cntcolumn] != '\r' && line[cntcolumn] != '\n')
 			unit_price = line[cntcolumn++] - '0' + unit_price * 10;
 		/*			将获取的边加入对应点的边集			*/
-		pe = nodelist[node_num1]->edgelist;
-		if( pe != NULL)
+		pnode = nodelist[node_num1];
+		if( pnode->edgelist != NULL)
 		{
-			while(pe->nextP != NULL)
-				pe = pe->nextP;
-			pe->nextP = initEDGE(node_num2 , capacity, unit_price);
+			/*		每次将新生成的一条边插入边集的头位置		*/
+			PEDGE tmp = pnode->edgelist;
+			pnode->edgelist = initEDGE(node_num2 , capacity, unit_price);
+			pnode->edgelist->nextP = tmp;
 		}
 		else
-			nodelist[node_num1]->edgelist = initEDGE(node_num2 , capacity, unit_price);
+			pnode->edgelist = initEDGE(node_num2 , capacity, unit_price);
 
-		pe = nodelist[node_num2]->edgelist;
-		if(pe != NULL)
+		pnode = nodelist[node_num2];
+		if( pnode->edgelist != NULL)
 		{
-			while(pe->nextP != NULL)
-				pe = pe->nextP;
-			pe->nextP = initEDGE(node_num1 , capacity, unit_price);
+			/*		每次将新生成的一条边插入边集的头位置		*/
+			PEDGE tmp = pnode->edgelist;
+			pnode->edgelist = initEDGE(node_num1 , capacity, unit_price);
+			pnode->edgelist->nextP = tmp;
 		}
 		else
-			nodelist[node_num2]->edgelist = initEDGE(node_num1 , capacity, unit_price);
+			pnode->edgelist = initEDGE(node_num1 , capacity, unit_price);
+		/*将互为反向边的两边互连*/
+		nodelist[node_num1]->edgelist->reverse = nodelist[node_num2]->edgelist;
+		nodelist[node_num2]->edgelist->reverse = nodelist[node_num1]->edgelist;
 		cntline++;
 		line = topo[cntline];
 	}
@@ -204,10 +213,11 @@ char * getresult(PPATH * to_DES , int DES_NODE_SIZE)
 		{
 			char line[MAX_LINE_LEN];									//每个路径都要重新写行
 			int cntcolumn = 0;
-			for(int j = 0 ; pathlist->path[j] != PATH_END ; j++)		//获取每个路径
+			int j = 0 ;
+			for(; pathlist->path[j] != PATH_END ; j++);	//获取每个路径
+			for(j-- ; j > -1 ; j--)
 			{
 				int cnt = MAX_BIT - 1;
-				j = 0;
 				char word[MAX_BIT];
 				int node_num = pathlist->path[j];
 				do
@@ -220,24 +230,12 @@ char * getresult(PPATH * to_DES , int DES_NODE_SIZE)
 					line[cntcolumn++] = word[cnt++];
 				line[cntcolumn++] = ' ';
 			}
-			/*			获取消费节点的标号			*/
+			/*			获取路径的流量			*/
 			int cnt = MAX_BIT - 1;
 			char word[MAX_BIT];
-			int node_num = i;
-			do
-			{
-				int m = node_num % 10;
-				word[--cnt] = m + '0';
-				node_num = node_num / 10;
-			}while(node_num > 0);
-			while(word[cnt] != '\0')
-				line[cntcolumn++] = word[cnt++];
-			line[cntcolumn++] = ' ';
-			/*			获取路径的流量			*/
-			cnt = MAX_BIT - 1;
 			for(int i = 0 ; i < MAX_BIT ; i++)
 				word[i] = '\0';
-			node_num = pathlist->traffic;
+			int node_num = pathlist->traffic;
 			do
 			{
 				int m = node_num % 10;
@@ -248,7 +246,7 @@ char * getresult(PPATH * to_DES , int DES_NODE_SIZE)
 				line[cntcolumn++] = word[cnt++];
 			line[cntcolumn++] = '\n';
 			line[cntcolumn] = '\0';				//行尾添加字符串终止符号
-			cntpath++;
+			cntpath++;							//行数计数
 			pathlist = pathlist->nextp;
 			strcat(result_path , line);				//将此条路径信息加入结果集
 		}
@@ -277,40 +275,111 @@ char * getresult(PPATH * to_DES , int DES_NODE_SIZE)
 }
 
 
-void merge_server()
-{
-}
-
-void dijkstra(PNODE * NODElist , int NODE_SIZE , int source)
+/*适用于服务器向消费节点寻路*/
+void dijkstra(PNODE * NODElist , int NODE_SIZE , PNODE source,
+		int *distance, int *front , int *traffic)
 {
 	PHEAP h = get_heap();
-	PTREE *TREElist = (PTREE*)malloc(sizeof(PTREE) * NODE_SIZE);
-	for(int i = 0; i < NODE_SIZE ; i++)
+	PTREE *TREElist = (PTREE*)malloc(sizeof(PTREE) * (NODE_SIZE + 2));
+	for(int i = 0; i < NODE_SIZE + 2; i++)
 	{
 		TREElist[i] = (PTREE)malloc(sizeof(TREE));
 		TREElist[i]->num = i;
 		TREElist[i]->key = UNREACH;
+		distance[i] = UNREACH;
+		front[i] = UNLINKED;
+		traffic[i] = EMPTY;
 		heap_insert(h , TREElist[i]);
 	}
-	heap_decrease(h , TREElist[source] , 0);		//设置源节点
-	while(NULL != h->min)
+	/*设置源节点*/
+	heap_decrease(h , TREElist[NODE_SIZE] , 0);
+	traffic[NODE_SIZE] = INFINITY_CAPACITY;
+	while(h->n > 0)
 	{
-		TREE t = heap_extract_min(h);
-		printf("%d\n", h->n);
-//		printf("%d:%d\n", t.num,t.key);
-		int node_num = t.num;
+		PTREE t = heap_extract_min(h);
+		int node_num = t->num;
 		for(PEDGE elist = NODElist[node_num]->edgelist;
 				elist != NULL ; elist = elist->nextP)
 		{
 			int reach_num = elist->node_num;
-			if(TREElist[reach_num]->key > t.key + elist->unit_price)
+			int newkey = t->key + elist->unit_price;
+			if(TREElist[reach_num]->key > newkey && elist->remain > 0)
+			{
 				heap_decrease(h , TREElist[reach_num] ,
-				t.key + elist->unit_price);
-//			printf("modify%d:%d\n",reach_num , TREElist[reach_num]->key);
+				newkey);
+				front[reach_num] = node_num;
+				distance[reach_num] = newkey;
+				traffic[reach_num] = traffic[node_num] > elist->remain ?
+						elist->remain : traffic[node_num];
+			}
 		}
 	}
-	for(int i = 0 ; i < NODE_SIZE ; i++)
+	for(int i = 0 ; i < NODE_SIZE + 2; i++)
 	{
-		printf("to %d:%d\n", i ,TREElist[i]->key);
+//		printf("%d:",i);
+//		printf("%d  ",distance[i]);
+//		printf("%d  %d |",front[i] , traffic[i]);
+		free(TREElist[i]);
 	}
+	free(TREElist);
+	free(h);
+//	for(int i = 0 ; i < NODE_SIZE ; i++)
+//	{
+//		printf("%dto %d:%d\t\t", source,i ,TREElist[i]->key);
+//	}
+//	printf("\n");
+}
+
+int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,  int demand , int *cost,int * server_position ,
+		PNODE source , PPATH * to_DES , PDES_NODE *DES_NODElist,PNODE * NODElist ,int * NODE_TO_DEStable)
+{
+	while(demand > 0)
+	{
+		int *distance = (int *)malloc(sizeof(int) * MAX_NODE_SIZE);
+		int *fronttable = (int *)malloc(sizeof(int) * MAX_NODE_SIZE);
+		int *traffic = (int *)malloc(sizeof(int) * MAX_NODE_SIZE);
+		dijkstra(NODElist , NODE_SIZE, source, distance, fronttable ,traffic);
+		if(fronttable[DESTINATION] != UNLINKED)
+		{
+			/*超级汇点有前驱点，则证明路线是连通的*/
+			int thetraffic = traffic[DESTINATION];
+			demand -= thetraffic;
+			/*超级汇点的前驱节点是该消费节点，则证明该消费节点的流量还没满足要求*/
+			PPATH pathlist = to_DES[NODE_TO_DEStable[fronttable[DESTINATION]]];
+			/*判断头节点路径是否使用*/
+			if(pathlist->traffic != 0)
+			{
+				/*为该消费节点创建新的路径*/
+				PPATH tmp = initPATH(fronttable[DESTINATION]);
+				tmp->nextp = pathlist->nextp;
+				pathlist->nextp = tmp;
+				pathlist = tmp;
+			}
+			int path_end = 0;
+			for(int front = fronttable[DESTINATION] , behind = DESTINATION ;
+					front != NODE_SIZE; behind = front , front = fronttable[front])
+			{
+				PEDGE edge= NODElist[behind]->edgelist;
+				for( ; edge->node_num != front; )
+					edge=edge->nextP;
+				/*我们将超级源点到超级汇点的路线视为正向边，前驱得到的边则为逆向边*/
+				edge->reverse->remain -= thetraffic;
+				edge->remain = edge->reverse->capacity - edge->reverse->remain;
+				pathlist->path[path_end++] = front;
+			}
+			*cost += thetraffic * distance[DESTINATION];
+			pathlist->path[path_end] = PATH_END;
+			free(distance);
+			free(fronttable);
+			free(traffic);
+		}
+		else
+			{
+			free(distance);
+			free(fronttable);
+			free(traffic);
+			return FALSE;
+			}
+	}
+	return TRUE;
 }

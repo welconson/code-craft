@@ -39,7 +39,7 @@ PHEAP get_heap();
 void heap_insert(PHEAP h , PTREE x);
 void heap_link(PHEAP h , PTREE y , PTREE x);
 void consolidate(PHEAP h);
-TREE heap_extract_min(PHEAP h);
+PTREE heap_extract_min(PHEAP h);
 void cut(PHEAP h, PTREE x, PTREE y);
 void cascading_cut(PHEAP h, PTREE y);
 void heap_decrease(PHEAP h , PTREE x, int k);
