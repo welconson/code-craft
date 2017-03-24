@@ -14,6 +14,8 @@ PNODE initNODE()
 		return NULL;
 	pn->edgelist = NULL;
 	pn->node_num = EMPTY;
+	pn->edge_num = EMPTY;
+	pn->try_attri = EMPTY;
 	return pn;
 }
 
@@ -53,14 +55,12 @@ PPATH initPATH(int start)
 	pp->path = (int *)malloc(sizeof(int) * MAX_PATH);
 	if(NULL == pp->path)
 		return NULL;
-	for(int i = 0 ; i < MAX_PATH ; i++)
-		pp->path[i] = PATH_END;
 	pp->traffic = 0;
 	pp->nextp = NULL;
 	pp->path[0] = start;
 	return pp;
 }
-/*初始化通往每个消费点的路径*/
+/*初始化每个消费节点的路径指针*/
 PPATH * initDESPATH(int DES_NODE_NUM ,PDES_NODE *DES_NODElist)
 {
 	PPATH * ppath = (PPATH *)malloc(sizeof(PPATH) * DES_NODE_NUM);
@@ -68,16 +68,37 @@ PPATH * initDESPATH(int DES_NODE_NUM ,PDES_NODE *DES_NODElist)
 		return NULL;
 	for(int i = 0 ; i < DES_NODE_NUM ; i++ )
 	{
-		ppath[i] = initPATH(DES_NODElist[i]->node_num);
-		ppath[i]->traffic = 0;
+		ppath[i] = initPATH(i);
 		if(NULL == ppath[i])
 			return NULL;
+		ppath[i]->traffic = 0;
 	}
 	return ppath;
 }
+/*初始化每个服务节点的路径指针*/
+PPATH * initSOUPATH(int server_num)
+{
+	PPATH * ppath = (PPATH*)malloc(sizeof(PPATH) * server_num);
+	if(NULL == ppath)
+		return NULL;
+	return ppath;
+}
+/*初始化解决方案*/
+PSOLUTION initSOLUTION(int degree , int frontnode)
+{
+	PSOLUTION s = (PSOLUTION)malloc(sizeof(SOLUTION));
+	if( NULL == s )
+		return NULL;
+	s->server_num = 0;
+	s->degree = degree;
+	s->frontnode = frontnode;
+	s->servertable = (int*)malloc(sizeof(int)*MAX_DES_SIZE) ;
+	s->pathlist = NULL;
+	return s;
+}
 /*将数据以邻接链表的形式动态存储起来*/
 int data_handle(char * topo[], PNODE **NODElist ,
-		PDES_NODE **DES_NODElist , int *NODE_SIZE ,
+		PDES_NODE **DES_NODElist , int *NODE_SIZE ,int *EDGE_SIZE,
 		int *DES_NODE_SIZE , int *SERVER_PRICE)
 {
 	/*获取网络节点的数量和消费节点的数量*/
@@ -99,8 +120,10 @@ int data_handle(char * topo[], PNODE **NODElist ,
 		nodelist[i] = initNODE();
 	/*获取边数*/
 	cntcolumn++;
+	int edge_num = 0;
 	while(line[cntcolumn] != ' ')
-		cntcolumn++;
+		edge_num = line[cntcolumn++] - '0' + edge_num*10;
+	*EDGE_SIZE = edge_num;
 	/*获取消费节点数*/
 	cntcolumn++;
 	nodenum = 0;
@@ -148,6 +171,7 @@ int data_handle(char * topo[], PNODE **NODElist ,
 			unit_price = line[cntcolumn++] - '0' + unit_price * 10;
 		/*			将获取的边加入对应点的边集			*/
 		pnode = nodelist[node_num1];
+		nodelist[node_num1]->edge_num++;
 		if( pnode->edgelist != NULL)
 		{
 			/*		每次将新生成的一条边插入边集的头位置		*/
@@ -159,6 +183,7 @@ int data_handle(char * topo[], PNODE **NODElist ,
 			pnode->edgelist = initEDGE(node_num2 , capacity, unit_price);
 
 		pnode = nodelist[node_num2];
+		nodelist[node_num2]->edge_num++;
 		if( pnode->edgelist != NULL)
 		{
 			/*		每次将新生成的一条边插入边集的头位置		*/
@@ -330,8 +355,10 @@ void dijkstra(PNODE * NODElist , int NODE_SIZE , PNODE source,
 //	printf("\n");
 }
 
-int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,  int demand , int *cost,int * server_position ,
-		PNODE source , PPATH * to_DES , PDES_NODE *DES_NODElist,PNODE * NODElist ,int * NODE_TO_DEStable)
+int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,
+		int demand , int *cost,int * server_position ,
+		PNODE source , PPATH * to_DES , PPATH * to_SOU ,PDES_NODE *DES_NODElist,
+		PNODE * NODElist ,int * NODE_TO_DEStable , int *NODE_TO_SERtable)
 {
 	while(demand > 0)
 	{
@@ -350,12 +377,12 @@ int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,  int dema
 			if(pathlist->traffic != 0)
 			{
 				/*为该消费节点创建新的路径*/
-				PPATH tmp = initPATH(fronttable[DESTINATION]);
+				PPATH tmp = initPATH(NODE_TO_DEStable[fronttable[DESTINATION]]);
 				tmp->nextp = pathlist->nextp;
 				pathlist->nextp = tmp;
 				pathlist = tmp;
 			}
-			int path_end = 0;
+			int path_end = 1;
 			for(int front = fronttable[DESTINATION] , behind = DESTINATION ;
 					front != NODE_SIZE; behind = front , front = fronttable[front])
 			{
@@ -368,7 +395,17 @@ int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,  int dema
 				pathlist->path[path_end++] = front;
 			}
 			*cost += thetraffic * distance[DESTINATION];
+			pathlist->traffic = thetraffic;
 			pathlist->path[path_end] = PATH_END;
+//			int server = pathlist->path[path_end-1];
+//			if(to_SOU[server] != NULL)
+//			{
+//				PPATH tmp = to_SOU[server]->nextp;
+//				to_SOU[server]->nextp = pathlist;
+//
+//			}
+//			else
+//				to_SOU[server]->nextp = pathlist;
 			free(distance);
 			free(fronttable);
 			free(traffic);
@@ -382,4 +419,184 @@ int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,  int dema
 			}
 	}
 	return TRUE;
+}
+/*初始化工作*/
+void initlize(PNODE *NODElist , PDES_NODE *DES_NODElist , int DES_NODE_SIZE ,int NODE_SIZE,
+		PNODE destination , int *NODE_TO_DEStable , int *demand)
+{
+	/*为每个汇点建立通往超级汇点的双向路径*/
+	for(int i = 0 ; i < DES_NODE_SIZE ; i++)
+	{
+		PEDGE pe = initEDGE(DESTINATION , DES_NODElist[i]->demand , NO_DISTANCE);
+		pe->nextP = NODElist[DES_NODElist[i]->node_num]->edgelist;
+		NODElist[DES_NODElist[i]->node_num]->edgelist = pe;
+		PEDGE pe0 = initEDGE(DES_NODElist[i]->node_num , DES_NODElist[i]->demand , NO_DISTANCE);
+		pe0->nextP = destination->edgelist;
+		destination->edgelist = pe0;
+		pe->reverse = pe0;
+		pe0->reverse = pe;
+		NODE_TO_DEStable[DES_NODElist[i]->node_num] = i;
+		*demand += DES_NODElist[i]->demand;
+	}
+	/*为每个网络节点设置设为服务器的尝试次数*/
+	for(int i = 0 ; i < NODE_SIZE ; i++)
+		NODElist[i]->try_attri =NODElist[i]->edge_num * TRY_ATTRI;
+	/*将网络节点的总流量和边集数量建堆*/
+	PHEAP edgenum_heap = get_heap();
+	PHEAP nodecap_heap = get_heap();
+	for(int i = 0 ; i < NODE_SIZE ; i++)
+	{
+		PEDGE p = NODElist[i]->edgelist;
+		int cap = 0;
+		int cnt = 0;
+		while( p != NULL)
+		{
+			cap += p->capacity;
+			p = p->nextP;
+			cnt++;
+		}
+		PTREE t = (PTREE)malloc(sizeof(TREE));
+		PTREE t0 = (PTREE)malloc(sizeof(TREE));
+		t->num = i;
+		t->key = cnt;
+		t0->num = i;
+		t0->key = cap;
+		heap_insert_max(edgenum_heap , t);
+		heap_insert_max(nodecap_heap , t0);
+//		printf("%d:%d %d\t|", i,cnt,cap);
+	}
+}
+/*给定服务器的数量和位置，将边集的残余流量重置,加入超级源点的边集,将超级汇点的边集的残余流量重置*/
+void reset(PNODE *NODElist, int NODE_SIZE, int server_num , int *server_position ,PNODE source)
+{
+	/*将边集的残余流量重置*/
+	for(int i = 0 ; i < NODE_SIZE ; i++)
+	{
+		PEDGE p = NODElist[i]->edgelist;
+		while( p != NULL)
+		{
+			p->remain = p->capacity;
+			p = p->nextP;
+		}
+	}
+	/*加入超级源点的边集*/
+	for(int i = 0 ; i < server_num ; i++)
+	{
+		PEDGE pe = initEDGE(server_position[i], INFINITY_CAPACITY , NO_DISTANCE);
+		pe->nextP = source->edgelist;
+		source->edgelist = pe;
+	}
+	/*将超级汇点的边集的残余流量重置*/
+	PEDGE pe = NODElist[DESTINATION]->edgelist;
+	while( pe != NULL)
+	{
+		pe->remain = pe->capacity;
+		pe->reverse->remain = pe->capacity;
+		pe = pe->nextP;
+	}
+}
+/*之前指定服务器时的数据清理，路径保留*/
+void clean(PNODE source , int server_num , int *server_position)
+{
+	/*释放当前超级源点的边集*/
+	PEDGE pe = source->edgelist;
+	PEDGE next;
+	source->edgelist = NULL;
+	while(pe != NULL)
+	{
+		next = pe->nextP;
+		free(pe);
+		pe = next;
+	}
+	for(int i = 0 ; i < server_num ; i++)
+		server_position[i] = NOTSET;
+}
+/*之前指定服务器时的数据清理,含无用路径清理*/
+void clean(PNODE source ,  int server_num , int *server_position ,int DES_NODE_SIZE , PPATH *to_DES)
+{
+	/*释放当前服务器的边集*/
+	clean(source , server_num , server_position);
+	/*释放当前服务器下的路径*/
+	for(int i = 0 ; i < DES_NODE_SIZE ; i++)
+	{
+		PPATH p = to_DES[i];
+		PPATH next;
+		while(p != NULL)
+		{
+			next = p->nextp;
+			free(p);
+			p = next;
+		}
+	}
+}
+/*解决方案产生器*/
+void solu_generater(int NODE_SIZE, PSOLUTION now, int *server_position, PNODE *NODElist,
+		int *solve, int EDGE_SIZE , PSOLUTION *solutionset)
+{
+	int merge_table[NODE_SIZE + 2] = {0};
+	int fronttable[NODE_SIZE] = {0};
+	int server_num = now->server_num;
+	merge_table[SOURCE] = UNREACH;
+	merge_table[DESTINATION] = UNREACH;
+	for(int m = 0 ; m < server_num ; m++)
+		merge_table[server_position[m]]++;
+	for(int i = 0 ; i < server_num ; i++)
+	{
+		for(PEDGE pe = NODElist[server_position[i]]->edgelist ; pe != NULL ; pe = pe->nextP)
+		{
+			int node = pe->node_num;
+			if(node == now->frontnode )
+				continue;
+			if(merge_table[node] == 0)
+			{
+				if(NODElist[node]->try_attri > 0)
+				{
+					NODElist[node]->try_attri--;
+					merge_table[node]++;
+					fronttable[node] = i;
+					int solve_num = (*solve) % SOLU_SIZE;
+					solutionset[solve_num] = initSOLUTION(now->degree + 1 , server_position[i]);
+					for(int j = 0 ; j < server_num ; j++)
+						solutionset[solve_num]->servertable[j] = server_position[j];
+					solutionset[solve_num]->servertable[i] = node;
+					solutionset[solve_num]->server_num = server_num;
+					(*solve)++;
+				}
+			}
+			else if(merge_table[node] == 1)
+			{
+				if(NODElist[i]->try_attri > 0)
+				{
+					NODElist[i]->try_attri--;
+					int solve_num = (*solve) % SOLU_SIZE;
+					solutionset[solve_num] = initSOLUTION(now->degree + 1 , server_position[i]);
+					for(int j = 0 ,  m = 0; m < server_num ;m++)
+					{
+						if( m == node )
+							continue;
+						solutionset[solve_num]->servertable[j++] = server_position[m];
+					}
+					solutionset[solve_num]->servertable[server_num -1] = NOTSET;
+					solutionset[solve_num]->server_num = server_num - 1;
+					(*solve)++;
+				}
+
+				if(NODElist[node]->try_attri > 0)
+				{
+					NODElist[node]->try_attri--;
+					int solve_num = (*solve) % SOLU_SIZE;
+					solutionset[solve_num] = initSOLUTION(now->degree + 1 , server_position[i]);
+					for(int j = 0 ,  m = 0; m < server_num ;m++)
+					{
+						if( m == i )
+							continue;
+						solutionset[solve_num]->servertable[j++] = server_position[m];
+					}
+					solutionset[solve_num]->servertable[server_num -1] = NOTSET;
+					solutionset[solve_num]->server_num = server_num - 1;
+					(*solve)++;
+				}
+			}
+		}
+	}
 }

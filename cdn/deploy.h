@@ -6,6 +6,7 @@
 #include "fibonacci.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define MAX_NODE_SIZE 1002
 #define MAX_DES_SIZE	500
@@ -24,7 +25,11 @@
 #define NO_DISTANCE	0
 #define DESTINATION NODE_SIZE + 1
 #define SOURCE		NODE_SIZE
-
+#define SOLU_SIZE	((EDGE_SIZE * NODE_SIZE)<<1)
+#define TRY_ATTRI	30
+#define SOLU_BUFFER	(EDGE_SIZE * NODE_SIZE)
+#define MAX_NODE_DEGREE	15
+#define CLK_TCK		1000000
 void deploy_server(char * graph[MAX_EDGE_NUM], int edge_num, char * filename);
 
 #endif
