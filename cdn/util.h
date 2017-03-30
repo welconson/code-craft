@@ -73,6 +73,20 @@ struct solution
 	int frontnode;
 	PPATH *pathlist;
 };
+extern PNODE* NODElist;					//网络节点表
+extern PDES_NODE* DES_NODElist;			//消费节点表
+extern int NODE_SIZE;					//网络节点数量
+extern int DES_NODE_SIZE;				//消费节点数量
+extern int *server_position;			//对应序号的服务器的网络节点号
+extern int SERVER_PRICE;				//服务器成本
+extern int EDGE_SIZE;					//边集数量
+extern int *alloc_table;	//对应消费节点挂载的服务器的网络节点号
+extern int *NODE_TO_DEStable;	//直连网络节点到对应消费节点的映射
+extern int *distance_between_des[];//直连网络节点间的最小距离
+extern PNODE destination;				//超级汇点
+extern PNODE source;					//超级源点
+extern int demand;						//总费用
+extern int bestcost;					//最小费用
 /*关于NODE的函数*/
 PNODE initNODE();
 /*关于EDGE的函数*/
@@ -82,7 +96,7 @@ PDES_NODE initDES_NODE(int node_num , int demand);
 /*关于PATH的函数*/
 PPATH initPATH(int start);
 /*初始化通往每个消费点的路径*/
-PPATH * initDESPATH(int DES_NODE_NUM ,PDES_NODE *DES_NODElist);
+PPATH * initDESPATH(int DES_NODE_SIZE ,PDES_NODE *DES_NODElist);
 /*初始化每个服务节点的路径指针*/
 PPATH * initSOUPATH(int server_num);
 /*初始化解决方案*/
@@ -94,24 +108,24 @@ int data_handle(char * topo[], PNODE **NODElist ,
 		PDES_NODE **DES_NODElist , int *NODE_SIZE ,int *EDGE_SIZE,
 		int *DES_NODE_SIZE ,  int *SERVER_PRICE);
 
-void dijkstra(PNODE * NODElist , int NODE_SIZE , PNODE source,
-		int *distance, int *front, int *traffic);
-
+void dijkstra(int *front, int *traffic);
+/*适用于探索合并消费节点的寻路*/
+void dijkstra_merge(int source,int *distance ,int *front);
 /*完成增流链的补充*/
-int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,
-		int server_num , int demand  ,int *cost, int * server_position ,
-		PNODE source ,PPATH * to_DES , PPATH *to_SOU,
-		PDES_NODE *DES_NODElist,PNODE * NODElist ,int *NODE_TO_DEStable , int *NODE_TO_SERtable);
+int remain_traffic(int server_num , int demand , int bestcost,int *cost, int * server_position ,
+		PNODE source ,PPATH * to_DES);
 /*初始化工作*/
 void initlize(PNODE *NODElist , PDES_NODE *DES_NODElist , int DES_NODE_SIZE ,int NODE_SIZE,
 		PNODE destination , int *NODE_TO_DEStable , int *demand);
 /*给定服务器的数量和位置,将边集的残余流量重置,加入超级源点的边集 , 将超级汇点的边集的残余流量重置*/
 void reset(PNODE *NODElist, int NODE_SIZE, int server_num , int *server_position , PNODE source);
 /*之前指定服务器时的数据清理，路径保留*/
-void clean(PNODE source ,  int server_num , int *server_position);
+void clean(PNODE source);
 /*之前指定服务器时的数据清理,含无用路径清理*/
-void clean(PNODE source ,  int server_num , int *server_position , int DES_NODE_SIZE , PPATH *to_DES);
+void clean(PNODE source, int DES_NODE_SIZE , PPATH *to_DES);
 /*解决方案产生器*/
 void solu_generater(int NODE_SIZE, PSOLUTION now, int *server_position, PNODE *NODElist,
 		int *solve, int EDGE_SIZE , PSOLUTION *solutionset);
+/*管理消费节点的合并*/
+void merge(PSOLUTION so);
 #endif /* CDN_UTIL_H_ */

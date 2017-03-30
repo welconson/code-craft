@@ -15,10 +15,10 @@
 #define EMPTY 0
 #define FALSE 0
 #define TRUE 1
-#define MAX_PATH 20
+#define MAX_PATH 30
 #define PATH_END -1
 #define MAX_LINE_LEN 55000
-#define MAX_BIT		5
+#define MAX_BIT		8
 #define UNREACH		1<<20
 #define NOTSET		-1
 #define INFINITY_CAPACITY	1<<30
@@ -26,10 +26,13 @@
 #define DESTINATION NODE_SIZE + 1
 #define SOURCE		NODE_SIZE
 #define SOLU_SIZE	((EDGE_SIZE * NODE_SIZE)<<1)
-#define TRY_ATTRI	30
+#define TRY_ATTRI	10
 #define SOLU_BUFFER	(EDGE_SIZE * NODE_SIZE)
-#define MAX_NODE_DEGREE	15
+#define MAX_NODE_DEGREE	10
 #define CLK_TCK		1000000
+#define USABLE		1
+#define UNUSABLE	0
+
 void deploy_server(char * graph[MAX_EDGE_NUM], int edge_num, char * filename);
 
 #endif

@@ -16,7 +16,7 @@ typedef struct heap HEAP;
 typedef struct heap * PHEAP;
 typedef struct tree TREE;
 typedef struct tree * PTREE;
-#define MAX_DEGREE 10
+#define MAX_DEGREE 15
 struct heap
 {
 	int n;

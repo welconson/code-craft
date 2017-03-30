@@ -6,6 +6,7 @@
  */
 #include "util.h"
 
+
 /*关于NODE的函数*/
 PNODE initNODE()
 {
@@ -61,12 +62,12 @@ PPATH initPATH(int start)
 	return pp;
 }
 /*初始化每个消费节点的路径指针*/
-PPATH * initDESPATH(int DES_NODE_NUM ,PDES_NODE *DES_NODElist)
+PPATH * initDESPATH(int DES_NODE_SIZE ,PDES_NODE *DES_NODElist)
 {
-	PPATH * ppath = (PPATH *)malloc(sizeof(PPATH) * DES_NODE_NUM);
+	PPATH * ppath = (PPATH *)malloc(sizeof(PPATH) * DES_NODE_SIZE);
 	if(NULL == ppath)
 		return NULL;
-	for(int i = 0 ; i < DES_NODE_NUM ; i++ )
+	for(int i = 0 ; i < DES_NODE_SIZE ; i++ )
 	{
 		ppath[i] = initPATH(i);
 		if(NULL == ppath[i])
@@ -301,8 +302,7 @@ char * getresult(PPATH * to_DES , int DES_NODE_SIZE)
 
 
 /*适用于服务器向消费节点寻路*/
-void dijkstra(PNODE * NODElist , int NODE_SIZE , PNODE source,
-		int *distance, int *front , int *traffic)
+void dijkstra(int *front , int *traffic)
 {
 	PHEAP h = get_heap();
 	PTREE *TREElist = (PTREE*)malloc(sizeof(PTREE) * (NODE_SIZE + 2));
@@ -311,11 +311,9 @@ void dijkstra(PNODE * NODElist , int NODE_SIZE , PNODE source,
 		TREElist[i] = (PTREE)malloc(sizeof(TREE));
 		TREElist[i]->num = i;
 		TREElist[i]->key = UNREACH;
-		distance[i] = UNREACH;
-		front[i] = UNLINKED;
-		traffic[i] = EMPTY;
 		heap_insert(h , TREElist[i]);
 	}
+	front[DESTINATION] = UNLINKED;
 	/*设置源节点*/
 	heap_decrease(h , TREElist[NODE_SIZE] , 0);
 	traffic[NODE_SIZE] = INFINITY_CAPACITY;
@@ -330,42 +328,69 @@ void dijkstra(PNODE * NODElist , int NODE_SIZE , PNODE source,
 			int newkey = t->key + elist->unit_price;
 			if(TREElist[reach_num]->key > newkey && elist->remain > 0)
 			{
-				heap_decrease(h , TREElist[reach_num] ,
-				newkey);
+				heap_decrease(h , TREElist[reach_num] ,newkey);
 				front[reach_num] = node_num;
-				distance[reach_num] = newkey;
 				traffic[reach_num] = traffic[node_num] > elist->remain ?
 						elist->remain : traffic[node_num];
 			}
 		}
 	}
 	for(int i = 0 ; i < NODE_SIZE + 2; i++)
-	{
-//		printf("%d:",i);
-//		printf("%d  ",distance[i]);
-//		printf("%d  %d |",front[i] , traffic[i]);
 		free(TREElist[i]);
-	}
 	free(TREElist);
 	free(h);
-//	for(int i = 0 ; i < NODE_SIZE ; i++)
-//	{
-//		printf("%dto %d:%d\t\t", source,i ,TREElist[i]->key);
-//	}
-//	printf("\n");
+}
+/*适用于探索合并消费节点的寻路*/
+void dijkstra_merge(int source,int *distance ,int *front)
+{
+	PHEAP h = get_heap();
+	PTREE *TREElist = (PTREE*)malloc(sizeof(PTREE) * (NODE_SIZE));
+	for(int i = 0; i < NODE_SIZE; i++)
+	{
+		TREElist[i] = (PTREE)malloc(sizeof(TREE));
+		TREElist[i]->num = i;
+		TREElist[i]->key = UNREACH;
+		distance[i] = UNREACH;
+		heap_insert(h , TREElist[i]);
+	}
+	/*设置源节点*/
+	heap_decrease(h ,TREElist[source] , 0);
+	while(h->n > 0)
+	{
+		PTREE t = heap_extract_min(h);
+		int node_num = t->num;
+//		printf("node_num:%d\n",t->num);
+		for(PEDGE elist = NODElist[node_num]->edgelist;
+				elist != NULL ; elist = elist->nextP)
+		{
+			int reach_num = elist->node_num;
+			if(reach_num == NODE_SIZE || reach_num ==NODE_SIZE + 1)
+				continue;
+			int newkey = t->key + elist->unit_price;
+			if(TREElist[reach_num]->key > newkey)
+			{
+				heap_decrease(h , TREElist[reach_num] ,newkey);
+				distance[reach_num] = newkey;
+				front[reach_num] = node_num;
+			}
+		}
+	}
+	for(int i = 0 ; i < NODE_SIZE; i++)
+		free(TREElist[i]);
+	free(TREElist);
+	free(h);
 }
 
-int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,
-		int demand , int *cost,int * server_position ,
-		PNODE source , PPATH * to_DES , PPATH * to_SOU ,PDES_NODE *DES_NODElist,
-		PNODE * NODElist ,int * NODE_TO_DEStable , int *NODE_TO_SERtable)
+int remain_traffic(int server_num ,int demand , int bestcost,int *cost,int * server_position ,
+		PNODE source , PPATH * to_DES)
 {
-	while(demand > 0)
+	while(demand > 0 )
 	{
-		int *distance = (int *)malloc(sizeof(int) * MAX_NODE_SIZE);
+		if(*cost > bestcost)
+			return FALSE;
 		int *fronttable = (int *)malloc(sizeof(int) * MAX_NODE_SIZE);
 		int *traffic = (int *)malloc(sizeof(int) * MAX_NODE_SIZE);
-		dijkstra(NODElist , NODE_SIZE, source, distance, fronttable ,traffic);
+		dijkstra(fronttable ,traffic);
 		if(fronttable[DESTINATION] != UNLINKED)
 		{
 			/*超级汇点有前驱点，则证明路线是连通的*/
@@ -373,6 +398,7 @@ int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,
 			demand -= thetraffic;
 			/*超级汇点的前驱节点是该消费节点，则证明该消费节点的流量还没满足要求*/
 			PPATH pathlist = to_DES[NODE_TO_DEStable[fronttable[DESTINATION]]];
+			DES_NODElist[NODE_TO_DEStable[fronttable[DESTINATION]]]->traffic +=thetraffic;
 			/*判断头节点路径是否使用*/
 			if(pathlist->traffic != 0)
 			{
@@ -383,6 +409,7 @@ int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,
 				pathlist = tmp;
 			}
 			int path_end = 1;
+			int distance = 0;
 			for(int front = fronttable[DESTINATION] , behind = DESTINATION ;
 					front != NODE_SIZE; behind = front , front = fronttable[front])
 			{
@@ -393,31 +420,32 @@ int remain_traffic(int DES_NODE_SIZE , int NODE_SIZE ,int server_num ,
 				edge->reverse->remain -= thetraffic;
 				edge->remain = edge->reverse->capacity - edge->reverse->remain;
 				pathlist->path[path_end++] = front;
+				distance += edge->unit_price;
 			}
-			*cost += thetraffic * distance[DESTINATION];
-			pathlist->traffic = thetraffic;
 			pathlist->path[path_end] = PATH_END;
-//			int server = pathlist->path[path_end-1];
-//			if(to_SOU[server] != NULL)
-//			{
-//				PPATH tmp = to_SOU[server]->nextp;
-//				to_SOU[server]->nextp = pathlist;
-//
-//			}
-//			else
-//				to_SOU[server]->nextp = pathlist;
-			free(distance);
+			int thecost = thetraffic * distance;
+			*cost += thecost;
+			pathlist->traffic = thetraffic;
+			DES_NODElist[NODE_TO_DEStable[fronttable[DESTINATION]]]->cost += thecost;
 			free(fronttable);
 			free(traffic);
 		}
 		else
-			{
-			free(distance);
+		{
 			free(fronttable);
 			free(traffic);
 			return FALSE;
-			}
+		}
 	}
+//	int save = 0;
+//	for(int i = 0 ; i < DES_NODE_SIZE; i++)
+//	{
+//		printf("%d demand:%d traffic:%d remain:%d cost:%d\n",i,DES_NODElist[i]->demand,DES_NODElist[i]->traffic,
+//				DES_NODElist[i]->demand-DES_NODElist[i]->traffic,DES_NODElist[i]->cost);
+//		if(DES_NODElist[i]->cost > SERVER_PRICE)
+//			save += DES_NODElist[i]->cost - SERVER_PRICE;
+//	}
+//	printf("save:%d\n",save);
 	return TRUE;
 }
 /*初始化工作*/
@@ -479,6 +507,12 @@ void reset(PNODE *NODElist, int NODE_SIZE, int server_num , int *server_position
 			p = p->nextP;
 		}
 	}
+	/*将消费节点的流量清空*/
+	for(int i = 0 ; i < DES_NODE_SIZE ; i++)
+	{
+		DES_NODElist[i]->traffic = 0;
+		DES_NODElist[i]->cost = 0;
+	}
 	/*加入超级源点的边集*/
 	for(int i = 0 ; i < server_num ; i++)
 	{
@@ -496,7 +530,7 @@ void reset(PNODE *NODElist, int NODE_SIZE, int server_num , int *server_position
 	}
 }
 /*之前指定服务器时的数据清理，路径保留*/
-void clean(PNODE source , int server_num , int *server_position)
+void clean(PNODE source)
 {
 	/*释放当前超级源点的边集*/
 	PEDGE pe = source->edgelist;
@@ -508,14 +542,12 @@ void clean(PNODE source , int server_num , int *server_position)
 		free(pe);
 		pe = next;
 	}
-	for(int i = 0 ; i < server_num ; i++)
-		server_position[i] = NOTSET;
 }
 /*之前指定服务器时的数据清理,含无用路径清理*/
-void clean(PNODE source ,  int server_num , int *server_position ,int DES_NODE_SIZE , PPATH *to_DES)
+void clean(PNODE source,int DES_NODE_SIZE , PPATH *to_DES)
 {
 	/*释放当前服务器的边集*/
-	clean(source , server_num , server_position);
+	clean(source);
 	/*释放当前服务器下的路径*/
 	for(int i = 0 ; i < DES_NODE_SIZE ; i++)
 	{
@@ -533,8 +565,8 @@ void clean(PNODE source ,  int server_num , int *server_position ,int DES_NODE_S
 void solu_generater(int NODE_SIZE, PSOLUTION now, int *server_position, PNODE *NODElist,
 		int *solve, int EDGE_SIZE , PSOLUTION *solutionset)
 {
-	int merge_table[NODE_SIZE + 2] = {0};
-	int fronttable[NODE_SIZE] = {0};
+	int merge_table[MAX_NODE_SIZE] = {0};
+//	int fronttable[MAX_NODE_SIZE] = {0};
 	int server_num = now->server_num;
 	merge_table[SOURCE] = UNREACH;
 	merge_table[DESTINATION] = UNREACH;
@@ -553,7 +585,7 @@ void solu_generater(int NODE_SIZE, PSOLUTION now, int *server_position, PNODE *N
 				{
 					NODElist[node]->try_attri--;
 					merge_table[node]++;
-					fronttable[node] = i;
+//					fronttable[node] = i;
 					int solve_num = (*solve) % SOLU_SIZE;
 					solutionset[solve_num] = initSOLUTION(now->degree + 1 , server_position[i]);
 					for(int j = 0 ; j < server_num ; j++)
@@ -599,4 +631,141 @@ void solu_generater(int NODE_SIZE, PSOLUTION now, int *server_position, PNODE *N
 			}
 		}
 	}
+}
+/*管理消费节点的合并*/
+void merge(PSOLUTION so)
+{
+	/*初始设为全部没有挂载*/
+	for(int j = 0 ; j < DES_NODE_SIZE ; j++)
+	{
+		alloc_table[j] = NOTSET;
+	}
+	int server_num = 0;
+	/*将所有的节点按 就近的服务节点进行挂载操作*/
+	for(int des_pointer = 0 ; des_pointer < DES_NODE_SIZE ;)
+	{
+		int distance[MAX_NODE_SIZE];
+		int front_first[MAX_NODE_SIZE];
+		int source = des_pointer;
+		int min_des1;
+		int min_des2;
+		alloc_table[source] = server_num;
+		int theserver = NOTSET;
+		front_first[DES_NODElist[source]->node_num] = PATH_END;
+		if(des_pointer == DES_NODE_SIZE - 1)
+		{
+			min_des1 = source;
+			min_des2 = source;
+			theserver = source;
+			goto end;
+		}
+		dijkstra_merge(DES_NODElist[source]->node_num, distance,front_first);
+		min_des1 = source;				//排除source节点
+		/*寻找第一个就近消费节点*/
+		for(int j = 0 ,dis = UNREACH; j < DES_NODE_SIZE ; j++)
+		{
+			if(alloc_table[j] == NOTSET &&
+					distance[DES_NODElist[j]->node_num] < dis)
+			{
+				min_des1 = j;
+				dis = distance[DES_NODElist[j]->node_num];
+			}
+		}
+		alloc_table[min_des1] = server_num;
+		int front_second[MAX_NODE_SIZE];
+		front_first[DES_NODElist[min_des1]->node_num] = PATH_END;
+		if(des_pointer == DES_NODE_SIZE - 2)
+		{
+			min_des2 = min_des1;
+			theserver = source;
+			goto end;
+		}
+		dijkstra_merge(DES_NODElist[min_des1]->node_num, distance,front_second);
+		min_des2 = min_des1;			//排除min_des1节点
+		/*寻找第二个就近消费节点*/
+		for(int j = 0 ,dis = UNREACH; j < DES_NODE_SIZE ; j++)
+		{
+			if(alloc_table[j] == NOTSET && distance[DES_NODElist[j]->node_num] < dis)
+			{
+				min_des2 = j;
+				dis = distance[DES_NODElist[j]->node_num];
+			}
+		}
+		alloc_table[min_des2] = server_num;
+		/*初选三消费节点共同挂载服务器位置*/
+		for(int m = DES_NODElist[min_des2]->node_num , n = DES_NODElist[min_des1]->node_num;
+				m != PATH_END ; m = front_second[m])
+		{
+			for(n = DES_NODElist[min_des1]->node_num; n != PATH_END && m != n; n = front_first[n]);
+			if(m == n)
+			{
+				theserver = m;
+				break;
+			}
+		}
+		end:
+		/*记录初选服务器位置和挂载消费节点的信息*/
+		so->servertable[server_num] = theserver;
+		/*选择下一个源消费节点*/
+		/*记录服务器数量*/
+//		printf("pointer:%d server_num:%d position:%d des_num:%d %d %d\n", des_pointer, server_num,
+//				so->servertable[server_num], source , min_des1, min_des2);
+		while(alloc_table[++des_pointer] != NOTSET && des_pointer < DES_NODE_SIZE);
+		server_num++;
+	}
+//	printf("pass\n");
+	/*三点合并完毕，检测是否可以连通*/
+	so->server_num = server_num;
+	so->servertable[server_num] = NOTSET;
+	int thecost = server_num * SERVER_PRICE;
+	PPATH *to_DES = initDESPATH(DES_NODE_SIZE , DES_NODElist);
+	reset(NODElist , NODE_SIZE , server_num , so->servertable , source);
+	if(remain_traffic(server_num , demand , bestcost, &thecost,server_position ,source , to_DES))
+	{
+		bestcost = thecost;
+		clean(source,DES_NODE_SIZE , to_DES);
+	}
+	else
+	{
+		/*该解不可行，将流量不够的消费节点直连网络节点设为服务器*/
+		clean(source,DES_NODE_SIZE , to_DES);
+//		int m = 0;
+		for(int i = 0 ; i < DES_NODE_SIZE ; i++)
+		{
+			if(DES_NODElist[i]->demand != DES_NODElist[i]->traffic )
+			{
+				so->servertable[server_num++] = DES_NODElist[i]->node_num;
+//				m++;
+			}
+		}
+//		printf("%d\n",m);
+		so->servertable[server_num] = NOTSET;
+		so->server_num = server_num;
+	}
+	/*保证为可行解的最大流费用计算*/
+	reset(NODElist , NODE_SIZE , server_num , so->servertable, source);
+	thecost = server_num * SERVER_PRICE;
+	to_DES = initDESPATH(DES_NODE_SIZE , DES_NODElist);
+	remain_traffic(server_num , demand , bestcost, &thecost,server_position ,source , to_DES);
+//	printf("cost:%d\n",thecost);
+	clean(source,DES_NODE_SIZE , to_DES);
+//	printf("pass\n");
+	/*将费用超过单个服务器费用的消费节点设为直连*/
+//	int save = 0;
+//	int m = 0;
+//	int ocost = 0;
+	for(int i = 0 ; i < DES_NODE_SIZE ; i++)
+	{
+		if(SERVER_PRICE < DES_NODElist[i]->cost)
+		{
+			so->servertable[server_num++] = DES_NODElist[i]->node_num;
+//			ocost += DES_NODElist[i]->cost;
+//			save =save + DES_NODElist[i]->cost - SERVER_PRICE;
+//			printf("%d cost:%d\n",i , DES_NODElist[i]->cost);
+//			m++;
+		}
+	}
+//	printf("ocost:%d save:%d m=%d server_num:%d price:%d\n", ocost , save,m , server_num , SERVER_PRICE);
+	so->servertable[server_num] = NOTSET;
+	so->server_num = server_num;
 }
